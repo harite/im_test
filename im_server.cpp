@@ -2,10 +2,10 @@
 #include "util.h"
 #include "imconn.h"
 
-#define SERVER_IP	"0.0.0.0"
-#define SERVER_PORT	8008
+#define IM_SERVER_PORT		8008
+#define ROUTE_SERVER_PORT	8000
 
-// this callback will be replaced by servconn_callback() in OnConnect()
+// this callback will be replaced by imconn_callback() in OnConnect()
 void serv_callback(void* callback_data, uint8_t msg, uint32_t handle, uint32_t uParam, void* pParam)
 {
 	NOTUSED_ARG(callback_data);
@@ -26,8 +26,13 @@ void serv_callback(void* callback_data, uint8_t msg, uint32_t handle, uint32_t u
 
 int main(int argc, char* argv[])
 {
-	NOTUSED_ARG(argc);
-	NOTUSED_ARG(argv);
+	if (argc != 3) {
+		printf("usage: im_server listen_ip route_server_ip\n");
+		return -1;
+	}
+
+	char* im_server_ip = argv[1];
+	char* route_server_ip = argv[2];
 
 	/*
 	 * Write to a socket that have received RST signal will cause SIGPIPE signal,
@@ -43,11 +48,20 @@ int main(int argc, char* argv[])
 	if (ret == NETLIB_ERROR)
 		return ret;
 
-	ret = netlib_listen(SERVER_IP, SERVER_PORT, serv_callback, NULL);
+	ret = netlib_listen(im_server_ip, IM_SERVER_PORT, serv_callback, NULL);
 	if (ret == NETLIB_ERROR)
 		return ret;
 
-	printf("server start listen on: %s:%d\n", SERVER_IP, SERVER_PORT);
+	printf("server start listen on: %s:%d\n", im_server_ip, IM_SERVER_PORT);
+
+	CImConn* pConn = new CImConn();
+	conn_handle_t handle = pConn->Connect(route_server_ip, ROUTE_SERVER_PORT, 0, NULL, NULL);
+	if (handle == NETLIB_INVALID_HANDLE) {
+		printf("wrong route server ip\n");
+	} else {
+		printf("connecting to route_server...\n");
+	}
+
 	printf("now enter the event loop...\n");
 
 	netlib_eventloop();

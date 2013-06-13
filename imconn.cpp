@@ -18,13 +18,14 @@ static const char* StateName[] = {
 typedef hash_map<conn_handle_t, CImConn*> ConnMap_t;
 typedef hash_map<uint32_t, CImConn*> UserMap_t;
 
-static uint32_t g_pkt_cnt;
+static uint32_t g_recv_pkt_cnt = 0;
+static uint32_t g_to_routesever_pkt_cnt = 0;
 ConnMap_t	g_conn_map;
 UserMap_t	g_user_map;
-char send_buf[128];
 const char* test_msg = "1234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890";
-uint32_t g_min_userId = (uint32_t)-1;
-uint32_t g_max_userId = 0;
+uint32_t g_min_userId = 1;
+uint32_t g_max_userId = 10;
+CImConn* g_route_conn = NULL;
 
 CImConn* FindImConnByUserId(uint32_t userId);
 
@@ -126,8 +127,6 @@ CImConn::CImConn()
 	m_callback_data = NULL;
 
 	m_last_send_tick = m_last_recv_tick = get_tick_count();
-
-	//SetLock(&m_lock);
 }
 
 CImConn::~CImConn()
@@ -155,13 +154,13 @@ conn_handle_t CImConn::Connect(
 	g_conn_map.insert(make_pair(m_handle, this));
 	g_user_map.insert(make_pair(userId, this));
 
-	if (g_min_userId > userId) {
+	/*if (g_min_userId > userId) {
 		g_min_userId = userId;
 	}
 
 	if (g_max_userId < userId) {
 		g_max_userId = userId;
-	}
+	}*/
 
 	return m_handle;
 }
@@ -194,6 +193,16 @@ void CImConn::Close()
 {
 	log("CImConn::Close, handle=%d\n", m_handle);
 
+	if (g_route_conn) {
+		if (g_route_conn == this) {
+			printf("disconnect from route_server\n");
+			g_route_conn = NULL;
+		} else {
+			CImPduOfflineRequest pdu(m_userId);
+			g_route_conn->Send(pdu.GetBuffer(), pdu.GetLength());
+		}
+	}
+
 	g_conn_map.erase(m_handle);
 	g_user_map.erase(m_userId);
 
@@ -222,13 +231,15 @@ void CImConn::OnConfirm()
 	{
 		_SetState(CONN_STATE_OPEN);
 	}
-	else
-	{
-		log("state error: %d\n", m_state);
+
+	if (m_userId != 0) {	// im_client
+		CImPduOnlineRequest pdu(m_userId);
+		Send(pdu.GetBuffer(), pdu.GetLength());
+	} else {
+		g_route_conn = this;
+		printf("im_server connected to route_server\n");
 	}
 
-	CImPduOnlineRequest pdu(m_userId);
-	Send(pdu.GetBuffer(), pdu.GetLength());
 }
 
 void CImConn::OnRead()
@@ -254,9 +265,9 @@ void CImConn::OnRead()
 		uint8_t pdu_type = pPdu->GetPduType();
 		uint32_t pdu_len = pPdu->GetLength();
 
-		g_pkt_cnt++;
-		if (g_pkt_cnt % 10000 == 0) {
-			log("recv g_pkt_cnt=%d\n", g_pkt_cnt);
+		g_recv_pkt_cnt++;
+		if (g_recv_pkt_cnt % 10000 == 0) {
+			log("recv g_recv_pkt_cnt=%d\n", g_recv_pkt_cnt);
 		}
 
 		switch (pdu_type) {
@@ -278,8 +289,6 @@ void CImConn::OnRead()
 
 void CImConn::OnWrite()
 {
-	//CFuncLock func_lock(&m_lock);
-
 	if (!m_busy)
 		return;
 
@@ -312,19 +321,9 @@ void CImConn::OnClose()
 
 void CImConn::OnTimer(uint32_t curr_tick)
 {
-	/*if (curr_tick - m_last_send_tick > IMCONN_KEEPALIVE_TIMEOUT)
-	{
-		Send(send_buf, 128);
-	}
-
-	if (curr_tick - m_last_recv_tick > IMCONN_TIMEOUT)
-	{
-		log("imconn timeout, close the connection, handle=%d\n", m_handle);
-		OnClose();
-	}*/
 	if (m_state == CONN_STATE_OPEN) {
-		//printf("send\n");
-		CImPduMsg pdu(m_userId, m_userId + 1, 1, (char*)test_msg);
+		uint32_t toUserId = rand() % (g_max_userId - g_min_userId) + g_min_userId;
+		CImPduMsg pdu(m_userId, toUserId, 1, (char*)test_msg);
 		Send(pdu.GetBuffer(), pdu.GetLength());
 	}
 }
@@ -341,9 +340,9 @@ void CImConn::HandleMsg(CImPduMsg* pPdu)
 	uint32_t toUserId = pPdu->GetToUserId();
 
 	if (toUserId == m_userId) {
-		if (m_callback) {
+		/*if (m_callback) {
 			m_callback(m_callback_data, NETLIB_MSG_READ, m_handle, 0,  pPdu->GetMsgContent());
-		}
+		}*/
 		return;
 	}
 
@@ -353,6 +352,13 @@ void CImConn::HandleMsg(CImPduMsg* pPdu)
 		CImPduMsg pdu(pPdu->GetFromUserId(), pPdu->GetToUserId(), pPdu->GetMsgType(), pPdu->GetMsgContent());
 		pConn->Send(pdu.GetBuffer(), pdu.GetLength());
 		pConn->ReleaseRef();
+	} else if (g_route_conn) {
+		CImPduMsg pdu(pPdu->GetFromUserId(), pPdu->GetToUserId(), pPdu->GetMsgType(), pPdu->GetMsgContent());
+		g_route_conn->Send(pdu.GetBuffer(), pdu.GetLength());
+		g_to_routesever_pkt_cnt++;
+		if (g_to_routesever_pkt_cnt % 5000 == 0) {
+			printf("to route_server pkt cnt: %d\n", g_to_routesever_pkt_cnt);
+		}
 	}
 }
 
