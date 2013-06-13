@@ -24,7 +24,7 @@ ConnMap_t	g_conn_map;
 UserMap_t	g_user_map;
 const char* test_msg = "1234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890";
 uint32_t g_min_userId = 1;
-uint32_t g_max_userId = 10;
+uint32_t g_max_userId = 100000;
 CImConn* g_route_conn = NULL;
 
 CImConn* FindImConnByUserId(uint32_t userId);
