@@ -29,6 +29,13 @@ int main(int argc, char* argv[])
 	NOTUSED_ARG(argc);
 	NOTUSED_ARG(argv);
 
+	/*
+	 * Write to a socket that have received RST signal will cause SIGPIPE signal,
+	 * the default action of this signal is exit process, so the process is just disappear
+	 * without any trace(actually echo $? will print 141(128+13)).
+	 * So we change the signal action to ignore the SIGPIPE.
+	 */
+	signal(SIGPIPE, SIG_IGN);
 	//InitImConn();
 
 	int ret = netlib_init();

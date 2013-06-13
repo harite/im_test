@@ -25,6 +25,8 @@ int main(int argc, char* argv[])
 		return -1;
 	}
 
+	signal(SIGPIPE, SIG_IGN);
+
 	char* server_ip = argv[1];
 	int start_id = atoi(argv[2]);
 	int max_conn_num = atoi(argv[3]);

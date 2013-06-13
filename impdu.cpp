@@ -85,7 +85,7 @@ bool CImPdu::_IsPduAvailable(uchar_t* buf, uint32_t len, uint32_t& pdu_len)
 	return true;
 }
 
-
+//CImPduOnlineRequest
 CImPduOnlineRequest::CImPduOnlineRequest(uchar_t* buf, uint32_t len)
 {
 	CByteStream is(buf, len);
@@ -105,6 +105,27 @@ CImPduOnlineRequest::CImPduOnlineRequest(uint32_t userId)
 	WriteHeader();
 }
 
+//CImPduOfflineRequest
+CImPduOfflineRequest::CImPduOfflineRequest(uchar_t* buf, uint32_t len)
+{
+	CByteStream is(buf, len);
+
+	is >> m_userId;
+
+	assert(is.GetPos() == len);
+}
+
+CImPduOfflineRequest::CImPduOfflineRequest(uint32_t userId)
+{
+	CByteStream os(&m_buf, IM_PDU_HEADER_LEN);
+	m_buf.Write(NULL, IM_PDU_HEADER_LEN);
+
+	os << userId;
+
+	WriteHeader();
+}
+
+//CImPduMsg
 CImPduMsg::CImPduMsg(uchar_t* buf, uint32_t len)
 {
 	m_msgContent = NULL;

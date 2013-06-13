@@ -106,7 +106,7 @@ void imconn_callback(void* callback_data, uint8_t msg, uint32_t handle, uint32_t
 		pConn->OnClose();
 		break;
 	default:
-		log("!!!bcastconn_callback error msg: %d\n", msg);
+		log("!!!imconn_callback error msg: %d\n", msg);
 		break;
 	}
 

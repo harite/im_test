@@ -25,6 +25,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <stdint.h>		// define int8_t ...
+#include <signal.h>
 #define closesocket close
 #define ioctlsocket ioctl
 #endif

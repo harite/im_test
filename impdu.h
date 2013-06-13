@@ -14,7 +14,8 @@
 #define IM_PDU_VERSION			0
 
 #define IM_PDU_TYPE_ONLINE_REQUEST		1
-#define IM_PDU_TYPE_MSG					2
+#define IM_PDU_TYPE_OFFLINE_REQUEST		2
+#define IM_PDU_TYPE_MSG					3
 
 class CImPdu
 {
@@ -47,6 +48,20 @@ public:
 	virtual ~CImPduOnlineRequest() {}
 
 	virtual uint8_t GetPduType() { return IM_PDU_TYPE_ONLINE_REQUEST; }
+
+	uint32_t GetUserId() { return m_userId; }
+private:
+	uint32_t	m_userId;
+};
+
+class CImPduOfflineRequest : public CImPdu
+{
+public:
+	CImPduOfflineRequest(uchar_t* buf, uint32_t len);
+	CImPduOfflineRequest(uint32_t userId);
+	virtual ~CImPduOfflineRequest() {}
+
+	virtual uint8_t GetPduType() { return IM_PDU_TYPE_OFFLINE_REQUEST; }
 
 	uint32_t GetUserId() { return m_userId; }
 private:
