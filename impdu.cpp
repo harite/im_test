@@ -56,6 +56,9 @@ CImPdu* CImPdu::ReadPdu(uchar_t *buf, uint32_t len)
 	case IM_PDU_TYPE_ONLINE_REQUEST:
 		pPdu = new CImPduOnlineRequest(payload_buf, payload_len);
 		break;
+	case IM_PDU_TYPE_OFFLINE_REQUEST:
+		pPdu = new CImPduOfflineRequest(payload_buf, payload_len);
+		break;
 	case IM_PDU_TYPE_MSG:
 		pPdu = new CImPduMsg(payload_buf, payload_len);
 		break;
