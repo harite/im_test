@@ -6,8 +6,9 @@
  */
 
 #include "imconn.h"
-#define MAX_MSG_SIZE	1024
+#define MAX_MSG_SIZE	4096
 #define MIN_MSG_SIZE	128
+#define TIMER_INTERVAL	50	// 50ms
 
 static const char* StateName[] = {
 	"CONN_STATE_IDLE",
@@ -27,8 +28,13 @@ static uint32_t g_from_routeserver_pkt_cnt = 0;
 
 ConnMap_t	g_conn_map;
 UserMap_t	g_user_map;
-uint32_t g_min_userId = 1;
-uint32_t g_max_userId = 100000;
+uint32_t g_src_min_userId;
+uint32_t g_src_max_userId;
+uint32_t g_dst_min_userId;
+uint32_t g_dst_max_userId;
+uint16_t g_pkt_size;
+int g_pkt_per_timer;	// how many connections need to send a packet in a timer
+
 CImConn* g_route_conn = NULL;
 uchar_t g_msg_buf[MAX_MSG_SIZE];
 
@@ -42,8 +48,8 @@ void imconn_timer_callback(void* callback_data, uint8_t msg, uint32_t handle, ui
 	NOTUSED_ARG(pParam);
 
 	CImConn* pConn = NULL;
-	for (int i = 0; i < 250; i++) {
-		uint32_t userId = rand() % (g_max_userId/2 - g_min_userId) + g_min_userId;
+	for (int i = 0; i < g_pkt_per_timer; i++) {
+		uint32_t userId = rand() % (g_src_max_userId - g_src_min_userId) + g_src_min_userId;
 		pConn = FindImConnByUserId(userId);
 		if (pConn) {
 			pConn->OnTimer(uParam);
@@ -53,10 +59,21 @@ void imconn_timer_callback(void* callback_data, uint8_t msg, uint32_t handle, ui
 
 }
 
-void InitImConn()
+void InitImConn(int src_min_id, int src_max_id, int dst_min_id, int dst_max_id, int pkt_per_second, int pkt_size)
 {
+	g_src_min_userId = src_min_id;
+	g_src_max_userId = src_max_id;
+	g_dst_min_userId = dst_min_id;
+	g_dst_max_userId = dst_max_id;
+	g_pkt_per_timer = pkt_per_second / (1000 / TIMER_INTERVAL);
+	g_pkt_size = pkt_size;
+
+	if (g_pkt_size > MAX_MSG_SIZE) {
+		g_pkt_size = MAX_MSG_SIZE;
+	}
+
 	srand(time(NULL));
-	netlib_register_timer(imconn_timer_callback, NULL, 50);
+	netlib_register_timer(imconn_timer_callback, NULL, TIMER_INTERVAL);
 }
 
 CImConn* FindImConn(conn_handle_t conn_handle)
@@ -316,9 +333,8 @@ void CImConn::OnClose()
 void CImConn::OnTimer(uint32_t curr_tick)
 {
 	if (m_state == CONN_STATE_OPEN) {
-		uint32_t toUserId = rand() % (g_max_userId - g_min_userId) + g_min_userId;	// toUserId in [g_min_userId, g_max_userId)
-		uint16_t msg_len = rand() % (MAX_MSG_SIZE - MIN_MSG_SIZE) + MIN_MSG_SIZE;
-		CImPduMsg pdu(m_userId, toUserId, 1, g_msg_buf, msg_len);
+		uint32_t toUserId = rand() % (g_dst_max_userId - g_dst_min_userId) + g_dst_min_userId;
+		CImPduMsg pdu(m_userId, toUserId, 1, g_msg_buf, g_pkt_size);
 		Send(pdu.GetBuffer(), pdu.GetLength());
 
 		g_send_pkt_cnt++;

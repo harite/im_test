@@ -79,6 +79,6 @@ private:
 };
 
 
-void InitImConn();
+void InitImConn(int src_min_id, int src_max_id, int dst_min_id, int dst_max_id, int pkt_per_second, int pkt_size);
 
 #endif /* IMCONN_H_ */
