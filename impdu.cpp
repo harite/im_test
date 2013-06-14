@@ -128,36 +128,36 @@ CImPduOfflineRequest::CImPduOfflineRequest(uint32_t userId)
 //CImPduMsg
 CImPduMsg::CImPduMsg(uchar_t* buf, uint32_t len)
 {
-	m_msgContent = NULL;
+	m_msgData = NULL;
 	CByteStream is(buf, len);
 
 	is >> m_fromUserId;
 	is >> m_toUserId;
 	is >> m_msgType;
-	m_msgContent = is.ReadString();
+	m_msgData = is.ReadData(m_msgLen);
 
 	assert(is.GetPos() == len);
 }
 
 
-CImPduMsg::CImPduMsg(uint32_t fromUserId, uint32_t toUserId, uint8_t msg_type, char* msg_content)
+CImPduMsg::CImPduMsg(uint32_t fromUserId, uint32_t toUserId, uint8_t msg_type, uchar_t* msg_data, uint16_t msg_len)
 {
-	m_msgContent = NULL;
+	m_msgData = NULL;
 	CByteStream os(&m_buf, IM_PDU_HEADER_LEN);
 	m_buf.Write(NULL, IM_PDU_HEADER_LEN);
 
 	os << fromUserId;
 	os << toUserId;
 	os << msg_type;
-	os.WriteString(msg_content);
+	os.WriteData(msg_data, msg_len);
 
 	WriteHeader();
 }
 
 CImPduMsg::~CImPduMsg()
 {
-	if (m_msgContent) {
-		free(m_msgContent);
-		m_msgContent = NULL;
+	if (m_msgData) {
+		free(m_msgData);
+		m_msgData = NULL;
 	}
 }

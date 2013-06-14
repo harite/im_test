@@ -24,6 +24,12 @@ enum {
 	CONN_STATE_CLOSE
 };
 
+typedef enum {
+	CONN_TYPE_IM_CLIENT = 1,
+	CONN_TYPE_IM_SERVER,
+	CONN_TYPE_ROUTE_SERVER
+} e_conntype_t;
+
 class CImConn : public CRefObject
 {
 public:
@@ -58,6 +64,7 @@ private:
 	string			m_server_ip;
 	uint16_t		m_server_port;
 	uint32_t		m_userId;
+	e_conntype_t	m_conn_type;
 
 	callback_t		m_callback;
 	void*			m_callback_data;

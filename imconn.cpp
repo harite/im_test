@@ -6,6 +6,8 @@
  */
 
 #include "imconn.h"
+#define MAX_MSG_SIZE	1024
+#define MIN_MSG_SIZE	128
 
 static const char* StateName[] = {
 	"CONN_STATE_IDLE",
@@ -19,13 +21,16 @@ typedef hash_map<conn_handle_t, CImConn*> ConnMap_t;
 typedef hash_map<uint32_t, CImConn*> UserMap_t;
 
 static uint32_t g_recv_pkt_cnt = 0;
-static uint32_t g_to_routesever_pkt_cnt = 0;
+static uint32_t g_send_pkt_cnt = 0;
+static uint32_t g_to_routeserver_pkt_cnt = 0;
+static uint32_t g_from_routeserver_pkt_cnt = 0;
+
 ConnMap_t	g_conn_map;
 UserMap_t	g_user_map;
-const char* test_msg = "1234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890";
 uint32_t g_min_userId = 1;
 uint32_t g_max_userId = 100000;
 CImConn* g_route_conn = NULL;
+uchar_t g_msg_buf[MAX_MSG_SIZE];
 
 CImConn* FindImConnByUserId(uint32_t userId);
 
@@ -37,8 +42,8 @@ void imconn_timer_callback(void* callback_data, uint8_t msg, uint32_t handle, ui
 	NOTUSED_ARG(pParam);
 
 	CImConn* pConn = NULL;
-	for (int i = 0; i < 200; i++) {
-		uint32_t userId = rand() % (g_max_userId - g_min_userId) + g_min_userId;
+	for (int i = 0; i < 250; i++) {
+		uint32_t userId = rand() % (g_max_userId/2 - g_min_userId) + g_min_userId;
 		pConn = FindImConnByUserId(userId);
 		if (pConn) {
 			pConn->OnTimer(uParam);
@@ -119,6 +124,7 @@ void imconn_callback(void* callback_data, uint8_t msg, uint32_t handle, uint32_t
 CImConn::CImConn()
 {
 	log("CImConn::CImConn\n");
+	m_server_port = 0;
 	m_state = CONN_STATE_IDLE;
 	m_busy = false;
 	m_userId = 0;
@@ -153,14 +159,6 @@ conn_handle_t CImConn::Connect(
 
 	g_conn_map.insert(make_pair(m_handle, this));
 	g_user_map.insert(make_pair(userId, this));
-
-	/*if (g_min_userId > userId) {
-		g_min_userId = userId;
-	}
-
-	if (g_max_userId < userId) {
-		g_max_userId = userId;
-	}*/
 
 	return m_handle;
 }
@@ -217,29 +215,30 @@ void CImConn::Close()
 
 void CImConn::OnConnect(net_handle_t handle)
 {
+	m_conn_type = CONN_TYPE_IM_SERVER;
 	m_handle = handle;
 
 	g_conn_map.insert(make_pair(handle, this));
 
-	_SetState(CONN_STATE_OPEN);
+	_SetState(CONN_STATE_CONNECTED);
 	netlib_option(handle, NETLIB_OPT_SET_CALLBACK, (void*)imconn_callback);
 }
 
 void CImConn::OnConfirm()
 {
-	if (m_state == CONN_STATE_CONNECTING)
-	{
-		_SetState(CONN_STATE_OPEN);
-	}
-
 	if (m_userId != 0) {	// im_client
 		CImPduOnlineRequest pdu(m_userId);
 		Send(pdu.GetBuffer(), pdu.GetLength());
+
+		m_conn_type = CONN_TYPE_IM_CLIENT;
 	} else {
 		g_route_conn = this;
 		printf("im_server connected to route_server\n");
+
+		m_conn_type = CONN_TYPE_ROUTE_SERVER;
 	}
 
+	_SetState(CONN_STATE_OPEN);
 }
 
 void CImConn::OnRead()
@@ -264,11 +263,6 @@ void CImConn::OnRead()
 	{
 		uint8_t pdu_type = pPdu->GetPduType();
 		uint32_t pdu_len = pPdu->GetLength();
-
-		g_recv_pkt_cnt++;
-		if (g_recv_pkt_cnt % 10000 == 0) {
-			log("recv g_recv_pkt_cnt=%d\n", g_recv_pkt_cnt);
-		}
 
 		switch (pdu_type) {
 		case IM_PDU_TYPE_ONLINE_REQUEST:
@@ -322,42 +316,79 @@ void CImConn::OnClose()
 void CImConn::OnTimer(uint32_t curr_tick)
 {
 	if (m_state == CONN_STATE_OPEN) {
-		uint32_t toUserId = rand() % (g_max_userId - g_min_userId) + g_min_userId;
-		CImPduMsg pdu(m_userId, toUserId, 1, (char*)test_msg);
+		uint32_t toUserId = rand() % (g_max_userId - g_min_userId) + g_min_userId;	// toUserId in [g_min_userId, g_max_userId)
+		uint16_t msg_len = rand() % (MAX_MSG_SIZE - MIN_MSG_SIZE) + MIN_MSG_SIZE;
+		CImPduMsg pdu(m_userId, toUserId, 1, g_msg_buf, msg_len);
 		Send(pdu.GetBuffer(), pdu.GetLength());
+
+		g_send_pkt_cnt++;
+		if (g_send_pkt_cnt % 10000 == 0) {
+			log("im_client, g_send_pkt_cnt=%d\n", g_send_pkt_cnt);
+		}
 	}
 }
 
 void CImConn::HandleOnlineRequest(CImPduOnlineRequest* pPdu)
 {
-	m_userId = pPdu->GetUserId();
-
-	g_user_map.insert(make_pair(m_userId, this));
-}
-
-void CImConn::HandleMsg(CImPduMsg* pPdu)
-{
-	uint32_t toUserId = pPdu->GetToUserId();
-
-	if (toUserId == m_userId) {
-		/*if (m_callback) {
-			m_callback(m_callback_data, NETLIB_MSG_READ, m_handle, 0,  pPdu->GetMsgContent());
-		}*/
+	if (m_conn_type != CONN_TYPE_IM_SERVER) {
+		log("not an im server, but receive a online request\n");
 		return;
 	}
 
+	_SetState(CONN_STATE_OPEN);
+
+	m_userId = pPdu->GetUserId();
+
+	g_user_map.insert(make_pair(m_userId, this));
+
+	if (g_route_conn) {
+		CImPduOnlineRequest pdu(m_userId);
+		g_route_conn->Send(pdu.GetBuffer(), pdu.GetLength());
+	}
+}
+
+/*
+ * three scenarios:
+ * 1. an im_client connection, discard packet
+ * 2. an im_server connection, send packet to im_client or route_server
+ * 3. a connection to route server, send packet to im_client or discard packet
+ */
+void CImConn::HandleMsg(CImPduMsg* pPdu)
+{
+	g_recv_pkt_cnt++;
+	if (g_recv_pkt_cnt % 10000 == 0) {
+		log("g_recv_pkt_cnt=%d\n", g_recv_pkt_cnt);
+	}
+
+	if (m_conn_type == CONN_TYPE_IM_CLIENT) {
+		return;
+	}
+
+	if (m_conn_type == CONN_TYPE_ROUTE_SERVER) {
+		g_from_routeserver_pkt_cnt++;
+		if (g_from_routeserver_pkt_cnt % 10000 == 0) {
+			log("g_from_routeserver_pkt_cnt: %d\n", g_from_routeserver_pkt_cnt);
+		}
+	}
+
+	uint32_t toUserId = pPdu->GetToUserId();
 	CImConn* pConn = FindImConnByUserId(toUserId);
 
 	if (pConn) {
-		CImPduMsg pdu(pPdu->GetFromUserId(), pPdu->GetToUserId(), pPdu->GetMsgType(), pPdu->GetMsgContent());
+		CImPduMsg pdu(pPdu->GetFromUserId(), pPdu->GetToUserId(), pPdu->GetMsgType(), pPdu->GetMsgData(), pPdu->GetMsgLen());
 		pConn->Send(pdu.GetBuffer(), pdu.GetLength());
 		pConn->ReleaseRef();
-	} else if (g_route_conn) {
-		CImPduMsg pdu(pPdu->GetFromUserId(), pPdu->GetToUserId(), pPdu->GetMsgType(), pPdu->GetMsgContent());
-		g_route_conn->Send(pdu.GetBuffer(), pdu.GetLength());
-		g_to_routesever_pkt_cnt++;
-		if (g_to_routesever_pkt_cnt % 5000 == 0) {
-			printf("to route_server pkt cnt: %d\n", g_to_routesever_pkt_cnt);
+	} else {
+		if (m_conn_type == CONN_TYPE_IM_SERVER && g_route_conn) {
+			CImPduMsg pdu(pPdu->GetFromUserId(), pPdu->GetToUserId(), pPdu->GetMsgType(),
+							pPdu->GetMsgData(), pPdu->GetMsgLen());
+
+			g_route_conn->Send(pdu.GetBuffer(), pdu.GetLength());
+
+			g_to_routeserver_pkt_cnt++;
+			if (g_to_routeserver_pkt_cnt % 10000 == 0) {
+				log("g_to_routeserver_pkt_cnt: %d\n", g_to_routeserver_pkt_cnt);
+			}
 		}
 	}
 }

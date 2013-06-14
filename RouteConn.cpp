@@ -10,7 +10,8 @@
 typedef hash_map<conn_handle_t, CRouteConn*> RouteConnMap_t;
 typedef hash_map<uint32_t, CRouteConn*> RouteUserMap_t;
 
-static uint32_t g_route_pkt_cnt = 0;
+static uint32_t g_recv_route_pkt_cnt = 0;
+static uint32_t g_send_route_pkt_cnt = 0;
 RouteConnMap_t	g_route_conn_map;
 RouteUserMap_t	g_route_user_map;
 
@@ -170,11 +171,6 @@ void CRouteConn::OnRead()
 		uint8_t pdu_type = pPdu->GetPduType();
 		uint32_t pdu_len = pPdu->GetLength();
 
-		g_route_pkt_cnt++;
-		if (g_route_pkt_cnt % 10000 == 0) {
-			log("recv g_route_pkt_cnt=%d\n", g_route_pkt_cnt);
-		}
-
 		switch (pdu_type) {
 		case IM_PDU_TYPE_ONLINE_REQUEST:
 			HandleOnlineRequest( (CImPduOnlineRequest*)pPdu );
@@ -234,6 +230,7 @@ void CRouteConn::OnTimer(uint32_t curr_tick)
 void CRouteConn::HandleOnlineRequest(CImPduOnlineRequest* pPdu)
 {
 	uint32_t userId = pPdu->GetUserId();
+	log("HandleOnlineRequest, userId=%d\n", userId);
 
 	g_route_user_map.insert(make_pair(userId, this));
 }
@@ -241,19 +238,30 @@ void CRouteConn::HandleOnlineRequest(CImPduOnlineRequest* pPdu)
 void CRouteConn::HandleOfflineRequest(CImPduOfflineRequest* pPdu)
 {
 	uint32_t userId = pPdu->GetUserId();
+	log("HandleOfflineRequest, userId=%d\n", userId);
 
 	g_route_user_map.erase(userId);
 }
 
 void CRouteConn::HandleMsg(CImPduMsg* pPdu)
 {
+	g_recv_route_pkt_cnt++;
+	if (g_recv_route_pkt_cnt % 10000 == 0) {
+		log("g_recv_route_pkt_cnt=%d\n", g_recv_route_pkt_cnt);
+	}
+
 	uint32_t toUserId = pPdu->GetToUserId();
 
 	CRouteConn* pConn = FindRouteConnByUserId(toUserId);
 
 	if (pConn) {
-		CImPduMsg pdu(pPdu->GetFromUserId(), pPdu->GetToUserId(), pPdu->GetMsgType(), pPdu->GetMsgContent());
+		CImPduMsg pdu(pPdu->GetFromUserId(), pPdu->GetToUserId(), pPdu->GetMsgType(), pPdu->GetMsgData(), pPdu->GetMsgLen());
 		pConn->Send(pdu.GetBuffer(), pdu.GetLength());
 		pConn->ReleaseRef();
+
+		g_send_route_pkt_cnt++;
+		if (g_send_route_pkt_cnt % 10000 == 0) {
+			log("g_send_route_pkt_cnt=%d\n", g_send_route_pkt_cnt);
+		}
 	}
 }

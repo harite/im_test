@@ -72,7 +72,7 @@ class CImPduMsg : public CImPdu
 {
 public:
 	CImPduMsg(uchar_t* buf, uint32_t len);
-	CImPduMsg(uint32_t fromUserId, uint32_t toUserId, uint8_t msgType, char* msgContent);
+	CImPduMsg(uint32_t fromUserId, uint32_t toUserId, uint8_t msgType, uchar_t* msg_data, uint16_t msg_len);
 	virtual ~CImPduMsg();
 
 	virtual uint8_t GetPduType() { return IM_PDU_TYPE_MSG; }
@@ -80,12 +80,14 @@ public:
 	uint32_t GetFromUserId() { return m_fromUserId; }
 	uint32_t GetToUserId() { return m_toUserId; }
 	uint8_t GetMsgType() { return m_msgType; }
-	char* GetMsgContent() { return m_msgContent; }
+	uchar_t* GetMsgData() { return m_msgData; }
+	uint16_t GetMsgLen() { return m_msgLen; }
 private:
 	uint32_t	m_fromUserId;
 	uint32_t 	m_toUserId;
 	uint8_t		m_msgType;
-	char*		m_msgContent;
+	uchar_t* 	m_msgData;
+	uint16_t 	m_msgLen;
 };
 
 #endif /* IMPDU_H_ */
